@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-image-search"
+version = "0.1.0"
+description = "Local-first image archive indexer and search tool"
+readme = "docs/requirements.md"
+requires-python = ">=3.9"
+dependencies = [
+  "pillow>=10.0",
+  "rich>=13.0",
+  "typer>=0.12",
+]
+
+[project.scripts]
+local-image-search = "local_image_search.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["local_image_search*"]

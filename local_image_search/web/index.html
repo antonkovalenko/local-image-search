@@ -30,6 +30,16 @@
 
     <main class="layout">
       <aside class="sidebar">
+        <section class="search-panel">
+          <div class="section-head">
+            <h2>Crop Search</h2>
+            <button id="search-button" type="button" title="Search" disabled>Search</button>
+          </div>
+          <input id="query-file" type="file" accept="image/*" />
+          <canvas id="query-canvas" width="320" height="220"></canvas>
+          <p id="search-status">Upload an image and drag a rectangle.</p>
+        </section>
+
         <div class="section-head">
           <h2>Folders</h2>
           <button id="refresh-button" type="button" title="Refresh">Refresh</button>

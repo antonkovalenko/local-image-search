@@ -113,7 +113,17 @@ M3 adds a minimal browser UI:
 - Browse thumbnails for a selected folder.
 - Preview image metadata.
 
-M4 should add embeddings after the index, API, and UI work on real folders:
+M4 adds the first end-to-end crop search:
+
+- Index a small deterministic `rgb-tile-16-v1` vector for each image.
+- Upload a query image in the browser.
+- Draw a crop rectangle on the query image.
+- Search active indexed vectors by cosine similarity.
+- Return matches grouped by folder.
+
+This is intentionally a baseline vector model. It proves the product flow without requiring large model downloads.
+
+M5 should replace or supplement the baseline vector with ML embeddings:
 
 - Full-image embeddings with OpenCLIP or SigLIP.
 - Face detection and face embeddings for person search.

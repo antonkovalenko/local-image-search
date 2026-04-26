@@ -62,7 +62,7 @@ def stats(db: DbOption = Path("./data/index.sqlite")) -> None:
     table = Table(title="Index Stats")
     table.add_column("Metric")
     table.add_column("Count", justify="right")
-    for key in ("total", "active", "missing", "error", "folders"):
+    for key in ("total", "active", "missing", "error", "folders", "vectors"):
         table.add_row(key.replace("_", " ").title(), str(stats_.get(key, 0)))
     console.print(table)
 

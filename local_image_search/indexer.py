@@ -9,6 +9,7 @@ from rich.progress import Progress
 from local_image_search.db import Database, ImageRecord
 from local_image_search.files import iter_image_files
 from local_image_search.thumbnails import ImageDecodeError, create_thumbnail, thumbnail_path
+from local_image_search.vector import VectorError, path_to_vector
 
 
 @dataclass
@@ -48,6 +49,12 @@ def index_paths(roots: list[Path], db_path: Path, thumbs_dir: Path) -> IndexSumm
                         and existing.size_bytes == stat.st_size
                         and existing.mtime_ns == stat.st_mtime_ns
                     ):
+                        image_id = db.get_image_id(path)
+                        if image_id is not None and not db.has_vector(image_id):
+                            db.upsert_vector(image_id, path_to_vector(path))
+                            summary.indexed += 1
+                            progress.advance(task)
+                            continue
                         db.touch_seen(path)
                         summary.skipped += 1
                         progress.advance(task)
@@ -68,9 +75,10 @@ def index_paths(roots: list[Path], db_path: Path, thumbs_dir: Path) -> IndexSumm
                         height=height,
                         thumb_path=str(thumb),
                     )
-                    db.upsert_image(record)
+                    image_id = db.upsert_image(record)
+                    db.upsert_vector(image_id, path_to_vector(path))
                     summary.indexed += 1
-                except (OSError, ImageDecodeError) as exc:
+                except (OSError, ImageDecodeError, VectorError) as exc:
                     try:
                         db.mark_error(path, str(exc))
                     except OSError:

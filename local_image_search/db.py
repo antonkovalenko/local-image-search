@@ -4,7 +4,9 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
+
+from local_image_search.vector import VECTOR_MODEL, cosine_similarity, decode_vector, encode_vector
 
 
 SCHEMA = """
@@ -29,6 +31,18 @@ create table if not exists images (
 create index if not exists idx_images_folder on images(folder);
 create index if not exists idx_images_status on images(status);
 create index if not exists idx_images_sha256 on images(sha256);
+
+create table if not exists image_vectors (
+  image_id integer not null,
+  model text not null,
+  dim integer not null,
+  vector text not null,
+  indexed_at text not null,
+  primary key (image_id, model),
+  foreign key (image_id) references images(id) on delete cascade
+);
+
+create index if not exists idx_image_vectors_model on image_vectors(model);
 """
 
 
@@ -53,7 +67,7 @@ class ImageRecord:
     height: int
     thumb_path: str
     status: str = "active"
-    error: str | None = None
+    error: Optional[str] = None
 
 
 def utc_now() -> str:
@@ -94,7 +108,7 @@ class Database:
             status=row["status"],
         )
 
-    def upsert_image(self, record: ImageRecord) -> None:
+    def upsert_image(self, record: ImageRecord) -> int:
         now = utc_now()
         self.conn.execute(
             """
@@ -134,6 +148,34 @@ class Database:
                 now,
                 now,
             ),
+        )
+        row = self.conn.execute("select id from images where path = ?", (record.path,)).fetchone()
+        return int(row["id"])
+
+    def get_image_id(self, path: Path) -> Optional[int]:
+        row = self.conn.execute("select id from images where path = ?", (str(path),)).fetchone()
+        if row is None:
+            return None
+        return int(row["id"])
+
+    def has_vector(self, image_id: int, model: str = VECTOR_MODEL) -> bool:
+        row = self.conn.execute(
+            "select 1 from image_vectors where image_id = ? and model = ?",
+            (image_id, model),
+        ).fetchone()
+        return row is not None
+
+    def upsert_vector(self, image_id: int, vector: list[float], model: str = VECTOR_MODEL) -> None:
+        self.conn.execute(
+            """
+            insert into image_vectors (image_id, model, dim, vector, indexed_at)
+            values (?, ?, ?, ?, ?)
+            on conflict(image_id, model) do update set
+              dim = excluded.dim,
+              vector = excluded.vector,
+              indexed_at = excluded.indexed_at
+            """,
+            (image_id, model, len(vector), encode_vector(vector), utc_now()),
         )
 
     def touch_seen(self, path: Path) -> None:
@@ -196,6 +238,15 @@ class Database:
         result["folders"] = self.conn.execute(
             "select count(distinct folder) from images where status = 'active'"
         ).fetchone()[0]
+        result["vectors"] = self.conn.execute(
+            """
+            select count(*)
+            from image_vectors
+            join images on images.id = image_vectors.image_id
+            where images.status = 'active' and image_vectors.model = ?
+            """,
+            (VECTOR_MODEL,),
+        ).fetchone()[0]
         return result
 
     def folders(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
@@ -243,7 +294,7 @@ class Database:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def images(self, folder: str | None = None, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+    def images(self, folder: Optional[str] = None, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         if folder is None:
             rows = self.conn.execute(
                 """
@@ -270,7 +321,7 @@ class Database:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def image(self, image_id: int) -> dict[str, Any] | None:
+    def image(self, image_id: int) -> Optional[dict[str, Any]]:
         row = self.conn.execute(
             """
             select id, path, folder, filename, extension, size_bytes, width, height,
@@ -283,6 +334,67 @@ class Database:
         if row is None:
             return None
         return dict(row)
+
+    def search_by_vector(
+        self,
+        query_vector: list[float],
+        limit: int = 50,
+        model: str = VECTOR_MODEL,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            select
+              images.id,
+              images.path,
+              images.folder,
+              images.filename,
+              images.extension,
+              images.size_bytes,
+              images.width,
+              images.height,
+              images.thumb_path,
+              image_vectors.vector
+            from image_vectors
+            join images on images.id = image_vectors.image_id
+            where images.status = 'active' and image_vectors.model = ?
+            """,
+            (model,),
+        ).fetchall()
+
+        scored = []
+        for row in rows:
+            item = dict(row)
+            vector = decode_vector(item.pop("vector"))
+            item["score"] = cosine_similarity(query_vector, vector)
+            scored.append(item)
+
+        scored.sort(key=lambda item: item["score"], reverse=True)
+        return scored[:limit]
+
+    def grouped_search_by_vector(
+        self,
+        query_vector: list[float],
+        limit: int = 50,
+        per_folder: int = 12,
+    ) -> list[dict[str, Any]]:
+        matches = self.search_by_vector(query_vector, limit=limit)
+        folders: dict[str, dict[str, Any]] = {}
+        for match in matches:
+            folder = match["folder"]
+            group = folders.setdefault(
+                folder,
+                {
+                    "folder": folder,
+                    "score": match["score"],
+                    "representative": match,
+                    "images": [],
+                },
+            )
+            group["score"] = max(group["score"], match["score"])
+            if len(group["images"]) < per_folder:
+                group["images"].append(match)
+
+        return sorted(folders.values(), key=lambda item: item["score"], reverse=True)
 
     def verify(self) -> dict[str, int]:
         rows = self.conn.execute(

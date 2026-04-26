@@ -4,11 +4,12 @@ from importlib import resources
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from local_image_search.db import Database
+from local_image_search.vector import VectorError, upload_to_crop_vector
 
 
 def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
@@ -78,6 +79,35 @@ def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
             raise HTTPException(status_code=404, detail="Thumbnail not found")
 
         return FileResponse(thumb_path, media_type="image/jpeg")
+
+    @app.post("/api/search")
+    async def search(
+        file: UploadFile = File(...),
+        x: float = Form(...),
+        y: float = Form(...),
+        width: float = Form(...),
+        height: float = Form(...),
+        limit: int = Form(50),
+    ) -> dict[str, object]:
+        if width <= 0 or height <= 0:
+            raise HTTPException(status_code=400, detail="Crop width and height must be positive")
+        if limit < 1 or limit > 500:
+            raise HTTPException(status_code=400, detail="Limit must be between 1 and 500")
+
+        content = await file.read()
+        try:
+            query_vector = upload_to_crop_vector(content, x=x, y=y, width=width, height=height)
+        except VectorError as exc:
+            raise HTTPException(status_code=400, detail=f"Could not read query image: {exc}") from exc
+
+        with open_db() as database:
+            groups = database.grouped_search_by_vector(query_vector, limit=limit)
+
+        return {
+            "model": "rgb-tile-16-v1",
+            "groups": groups,
+            "limit": limit,
+        }
 
     return app
 

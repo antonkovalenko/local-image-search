@@ -58,4 +58,5 @@ curl http://127.0.0.1:8000/api/folders
 
 - The `data/` directory is for local runtime output and should not be committed.
 - Re-running `index` skips unchanged files.
+- Re-running `index` also backfills missing visual vectors for older indexes.
 - Deleted files are marked as `missing` instead of being removed from the database.

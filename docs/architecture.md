@@ -40,6 +40,7 @@ local-image-search/
     deploy.md
   local_image_search/
     __init__.py
+    api.py
     cli.py
     db.py
     files.py
@@ -58,6 +59,7 @@ local-image-search/
 local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs
 local-image-search stats --db ./data/index.sqlite
 local-image-search verify --db ./data/index.sqlite
+local-image-search serve --db ./data/index.sqlite --host 127.0.0.1 --port 8000
 ```
 
 `index` is incremental. It uses path, file size, and modification time to skip unchanged files. It computes a content hash only when a file is new or changed.
@@ -89,7 +91,17 @@ images(
 
 ## Future Milestones
 
-M2 should add embeddings after M1 works on real folders:
+M2 adds a small local API over the existing index:
+
+- `GET /health`
+- `GET /api/stats`
+- `GET /api/verify`
+- `GET /api/folders`
+- `GET /api/images`
+- `GET /api/images/{image_id}`
+- `GET /api/images/{image_id}/thumbnail`
+
+M3 should add embeddings after M1 and M2 work on real folders:
 
 - Full-image embeddings with OpenCLIP or SigLIP.
 - Face detection and face embeddings for person search.

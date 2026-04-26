@@ -34,6 +34,20 @@ Verify indexed files and thumbnails:
 local-image-search verify --db ./data/index.sqlite
 ```
 
+Run the local API:
+
+```bash
+local-image-search serve --db ./data/index.sqlite --host 127.0.0.1 --port 8000
+```
+
+Check it:
+
+```bash
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/api/stats
+curl http://127.0.0.1:8000/api/folders
+```
+
 ## Notes
 
 - The `data/` directory is for local runtime output and should not be committed.

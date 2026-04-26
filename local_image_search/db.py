@@ -4,6 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 SCHEMA = """
@@ -196,6 +197,92 @@ class Database:
             "select count(distinct folder) from images where status = 'active'"
         ).fetchone()[0]
         return result
+
+    def folders(self, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            with ranked as (
+              select
+                id,
+                folder,
+                path,
+                filename,
+                width,
+                height,
+                thumb_path,
+                mtime_ns,
+                row_number() over (
+                  partition by folder
+                  order by mtime_ns desc, filename asc
+                ) as row_number
+              from images
+              where status = 'active'
+            ),
+            counts as (
+              select folder, count(*) as image_count
+              from images
+              where status = 'active'
+              group by folder
+            )
+            select
+              ranked.folder,
+              counts.image_count,
+              ranked.id as representative_id,
+              ranked.path as representative_path,
+              ranked.filename as representative_filename,
+              ranked.width as representative_width,
+              ranked.height as representative_height,
+              ranked.thumb_path as representative_thumb_path
+            from ranked
+            join counts on counts.folder = ranked.folder
+            where ranked.row_number = 1
+            order by ranked.folder
+            limit ? offset ?
+            """,
+            (limit, offset),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def images(self, folder: str | None = None, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+        if folder is None:
+            rows = self.conn.execute(
+                """
+                select id, path, folder, filename, extension, size_bytes, width, height,
+                  thumb_path, indexed_at, last_seen_at
+                from images
+                where status = 'active'
+                order by folder, filename
+                limit ? offset ?
+                """,
+                (limit, offset),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                """
+                select id, path, folder, filename, extension, size_bytes, width, height,
+                  thumb_path, indexed_at, last_seen_at
+                from images
+                where status = 'active' and folder = ?
+                order by filename
+                limit ? offset ?
+                """,
+                (folder, limit, offset),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def image(self, image_id: int) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            select id, path, folder, filename, extension, size_bytes, width, height,
+              thumb_path, status, error, indexed_at, last_seen_at
+            from images
+            where id = ?
+            """,
+            (image_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
 
     def verify(self) -> dict[str, int]:
         rows = self.conn.execute(

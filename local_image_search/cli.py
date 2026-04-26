@@ -81,5 +81,25 @@ def verify(db: DbOption = Path("./data/index.sqlite")) -> None:
     console.print(table)
 
 
+@app.command()
+def serve(
+    db: DbOption = Path("./data/index.sqlite"),
+    host: Annotated[
+        str,
+        typer.Option("--host", help="Host address to bind."),
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        typer.Option("--port", help="Port to bind."),
+    ] = 8000,
+) -> None:
+    """Run the local API server."""
+    import uvicorn
+
+    from local_image_search.api import create_app
+
+    uvicorn.run(create_app(db), host=host, port=port)
+
+
 if __name__ == "__main__":
     app()

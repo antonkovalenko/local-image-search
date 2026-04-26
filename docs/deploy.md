@@ -40,6 +40,12 @@ Run the local API:
 local-image-search serve --db ./data/index.sqlite --host 127.0.0.1 --port 8000
 ```
 
+Open the browser UI:
+
+```text
+http://127.0.0.1:8000/
+```
+
 Check it:
 
 ```bash

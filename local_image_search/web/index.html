@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local Image Search</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Local Image Search</h1>
+        <p id="subtitle">Indexed archive browser</p>
+      </div>
+      <div class="status-grid" aria-label="Index status">
+        <div>
+          <span id="active-count">0</span>
+          <label>active</label>
+        </div>
+        <div>
+          <span id="folder-count">0</span>
+          <label>folders</label>
+        </div>
+        <div>
+          <span id="error-count">0</span>
+          <label>errors</label>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <div class="section-head">
+          <h2>Folders</h2>
+          <button id="refresh-button" type="button" title="Refresh">Refresh</button>
+        </div>
+        <div id="folders" class="folder-list"></div>
+      </aside>
+
+      <section class="content">
+        <div class="section-head">
+          <div>
+            <h2 id="current-folder">Select a folder</h2>
+            <p id="image-count">No images loaded</p>
+          </div>
+        </div>
+        <div id="images" class="image-grid"></div>
+      </section>
+    </main>
+
+    <dialog id="preview-dialog">
+      <button id="close-preview" class="close-button" type="button" title="Close">x</button>
+      <img id="preview-image" alt="" />
+      <div id="preview-meta"></div>
+    </dialog>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

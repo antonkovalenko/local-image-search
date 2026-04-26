@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from importlib import resources
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from local_image_search.db import Database
 
@@ -12,6 +14,9 @@ from local_image_search.db import Database
 def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
     db_path = Path(db_path)
     app = FastAPI(title="Local Image Search API", version="0.1.0")
+    web_root = resources.files("local_image_search").joinpath("web")
+    static_root = web_root.joinpath("static")
+    app.mount("/static", StaticFiles(directory=str(static_root)), name="static")
 
     def open_db() -> Database:
         return Database(db_path)
@@ -19,6 +24,10 @@ def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/", response_class=HTMLResponse)
+    def home() -> str:
+        return web_root.joinpath("index.html").read_text(encoding="utf-8")
 
     @app.get("/api/stats")
     def stats() -> dict[str, int]:

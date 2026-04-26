@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build a local-first image archive indexer and search tool that can be cloned onto another desktop machine and run with a short setup process. The first milestone is intentionally small: index files, metadata, and thumbnails reliably before adding vector embeddings or a web UI.
+Build a local-first image archive indexer and search tool that can be cloned onto another desktop machine and run with a short setup process. The first milestones are intentionally small: index files, metadata, and thumbnails reliably, then expose them through a local API and browser UI before adding vector embeddings.
 
 ## Milestone 1: File And Thumbnail Indexer
 
@@ -27,6 +27,7 @@ The first version is a single local Python application:
 - Thumbnails: filesystem directory
 - Image decoding: Pillow
 - Progress output: Rich
+- API and web UI: FastAPI
 
 No web server, auth, background workers, vector database, or ClickHouse are needed for M1.
 
@@ -46,6 +47,9 @@ local-image-search/
     files.py
     indexer.py
     thumbnails.py
+    web/
+      index.html
+      static/
   tests/
   data/
     .gitkeep
@@ -94,6 +98,7 @@ images(
 M2 adds a small local API over the existing index:
 
 - `GET /health`
+- `GET /`
 - `GET /api/stats`
 - `GET /api/verify`
 - `GET /api/folders`
@@ -101,7 +106,14 @@ M2 adds a small local API over the existing index:
 - `GET /api/images/{image_id}`
 - `GET /api/images/{image_id}/thumbnail`
 
-M3 should add embeddings after M1 and M2 work on real folders:
+M3 adds a minimal browser UI:
+
+- Open `http://127.0.0.1:8000/`.
+- Inspect folders grouped from the index.
+- Browse thumbnails for a selected folder.
+- Preview image metadata.
+
+M4 should add embeddings after the index, API, and UI work on real folders:
 
 - Full-image embeddings with OpenCLIP or SigLIP.
 - Face detection and face embeddings for person search.

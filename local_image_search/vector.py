@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
-import math
+from abc import ABC, abstractmethod
 from io import BytesIO
 from pathlib import Path
+from typing import Union
 
+import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 
-VECTOR_MODEL = "rgb-tile-16-v1"
+DEFAULT_MODEL_NAME = "rgb-tile-16-v1"
 VECTOR_SIZE = (16, 16)
 
 
@@ -16,54 +18,84 @@ class VectorError(RuntimeError):
     pass
 
 
-def image_to_vector(image: Image.Image) -> list[float]:
-    image = ImageOps.exif_transpose(image)
-    image = image.convert("RGB").resize(VECTOR_SIZE)
-    values: list[float] = []
-    for red, green, blue in image.getdata():
-        values.extend((red / 255.0, green / 255.0, blue / 255.0))
-    return normalize(values)
+class EmbeddingModel(ABC):
+    name: str
+    dim: int
+
+    @abstractmethod
+    def embed_image(self, image: Image.Image) -> np.ndarray:
+        raise NotImplementedError
+
+    def embed_path(self, path: Path) -> np.ndarray:
+        try:
+            with Image.open(path) as image:
+                return self.embed_image(image)
+        except (OSError, UnidentifiedImageError) as exc:
+            raise VectorError(str(exc)) from exc
+
+    def embed_upload_crop(self, content: bytes, x: float, y: float, width: float, height: float) -> np.ndarray:
+        try:
+            with Image.open(BytesIO(content)) as image:
+                image = ImageOps.exif_transpose(image)
+                image_width, image_height = image.size
+                left = clamp(round(x), 0, image_width - 1)
+                top = clamp(round(y), 0, image_height - 1)
+                right = clamp(round(x + width), left + 1, image_width)
+                bottom = clamp(round(y + height), top + 1, image_height)
+                return self.embed_image(image.crop((left, top, right, bottom)))
+        except (OSError, UnidentifiedImageError) as exc:
+            raise VectorError(str(exc)) from exc
 
 
-def path_to_vector(path: Path) -> list[float]:
+class RgbTileEmbeddingModel(EmbeddingModel):
+    name = DEFAULT_MODEL_NAME
+    dim = VECTOR_SIZE[0] * VECTOR_SIZE[1] * 3
+
+    def embed_image(self, image: Image.Image) -> np.ndarray:
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB").resize(VECTOR_SIZE)
+        vector = np.asarray(image, dtype=np.float32).reshape(-1) / 255.0
+        return normalize(vector)
+
+
+MODELS: dict[str, EmbeddingModel] = {
+    DEFAULT_MODEL_NAME: RgbTileEmbeddingModel(),
+}
+
+
+def get_model(name: str = DEFAULT_MODEL_NAME) -> EmbeddingModel:
     try:
-        with Image.open(path) as image:
-            return image_to_vector(image)
-    except (OSError, UnidentifiedImageError) as exc:
-        raise VectorError(str(exc)) from exc
+        return MODELS[name]
+    except KeyError as exc:
+        available = ", ".join(sorted(MODELS))
+        raise VectorError(f"Unknown model '{name}'. Available models: {available}") from exc
 
 
-def upload_to_crop_vector(content: bytes, x: float, y: float, width: float, height: float) -> list[float]:
-    try:
-        with Image.open(BytesIO(content)) as image:
-            image = ImageOps.exif_transpose(image)
-            image_width, image_height = image.size
-            left = clamp(round(x), 0, image_width - 1)
-            top = clamp(round(y), 0, image_height - 1)
-            right = clamp(round(x + width), left + 1, image_width)
-            bottom = clamp(round(y + height), top + 1, image_height)
-            return image_to_vector(image.crop((left, top, right, bottom)))
-    except (OSError, UnidentifiedImageError) as exc:
-        raise VectorError(str(exc)) from exc
+def available_models() -> list[str]:
+    return sorted(MODELS)
 
 
-def normalize(values: list[float]) -> list[float]:
-    length = math.sqrt(sum(value * value for value in values))
+def normalize(vector: np.ndarray) -> np.ndarray:
+    vector = np.asarray(vector, dtype=np.float32)
+    length = np.linalg.norm(vector)
     if length == 0:
-        return values
-    return [value / length for value in values]
+        return vector
+    return vector / length
 
 
-def cosine_similarity(left: list[float], right: list[float]) -> float:
-    return sum(a * b for a, b in zip(left, right))
+def encode_vector(vector: np.ndarray) -> bytes:
+    return np.asarray(vector, dtype=np.float32).tobytes()
 
 
-def encode_vector(vector: list[float]) -> str:
-    return json.dumps(vector, separators=(",", ":"))
-
-
-def decode_vector(raw: str) -> list[float]:
-    return [float(value) for value in json.loads(raw)]
+def decode_vector(raw: Union[bytes, str], dim: int) -> np.ndarray:
+    if isinstance(raw, bytes):
+        vector = np.frombuffer(raw, dtype=np.float32)
+    else:
+        # Compatibility path for rows written by the old JSON vector storage.
+        vector = np.asarray(json.loads(raw), dtype=np.float32)
+    if vector.shape[0] != dim:
+        raise VectorError(f"Vector dim mismatch: expected {dim}, got {vector.shape[0]}")
+    return vector
 
 
 def clamp(value: int, minimum: int, maximum: int) -> int:

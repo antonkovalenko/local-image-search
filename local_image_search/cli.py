@@ -9,6 +9,7 @@ from rich.table import Table
 
 from local_image_search.db import Database
 from local_image_search.indexer import index_paths
+from local_image_search.vector import DEFAULT_MODEL_NAME, available_models
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -32,6 +33,10 @@ def index(
         Path,
         typer.Option("--thumbs", help="Directory where thumbnails are stored."),
     ] = Path("./data/thumbs"),
+    model: Annotated[
+        str,
+        typer.Option("--model", help="Embedding model to use for visual vectors."),
+    ] = DEFAULT_MODEL_NAME,
 ) -> None:
     """Index image metadata and thumbnails."""
     if not paths:
@@ -41,7 +46,10 @@ def index(
     if missing:
         raise typer.BadParameter(f"Path does not exist: {missing[0]}")
 
-    summary = index_paths(paths, db, thumbs)
+    if model not in available_models():
+        raise typer.BadParameter(f"Unknown model '{model}'. Available models: {', '.join(available_models())}")
+
+    summary = index_paths(paths, db, thumbs, model_name=model)
     table = Table(title="Index Summary")
     table.add_column("Metric")
     table.add_column("Count", justify="right")
@@ -54,10 +62,16 @@ def index(
 
 
 @app.command()
-def stats(db: DbOption = Path("./data/index.sqlite")) -> None:
+def stats(
+    db: DbOption = Path("./data/index.sqlite"),
+    model: Annotated[
+        str,
+        typer.Option("--model", help="Embedding model to count vectors for."),
+    ] = DEFAULT_MODEL_NAME,
+) -> None:
     """Print index statistics."""
     with Database(db) as database:
-        stats_ = database.stats()
+        stats_ = database.stats(model=model)
 
     table = Table(title="Index Stats")
     table.add_column("Metric")

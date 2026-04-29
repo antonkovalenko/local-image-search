@@ -22,6 +22,12 @@ Index a folder:
 local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs
 ```
 
+Choose an embedding model explicitly:
+
+```bash
+local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs --model rgb-tile-16-v1
+```
+
 Show database stats:
 
 ```bash

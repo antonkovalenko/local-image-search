@@ -9,7 +9,7 @@ from rich.progress import Progress
 from local_image_search.db import Database, ImageRecord
 from local_image_search.files import iter_image_files
 from local_image_search.thumbnails import ImageDecodeError, create_thumbnail, thumbnail_path
-from local_image_search.vector import VectorError, path_to_vector
+from local_image_search.vector import DEFAULT_MODEL_NAME, VectorError, get_model
 
 
 @dataclass
@@ -29,9 +29,15 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def index_paths(roots: list[Path], db_path: Path, thumbs_dir: Path) -> IndexSummary:
+def index_paths(
+    roots: list[Path],
+    db_path: Path,
+    thumbs_dir: Path,
+    model_name: str = DEFAULT_MODEL_NAME,
+) -> IndexSummary:
     summary = IndexSummary()
     thumbs_dir = thumbs_dir.expanduser().resolve()
+    model = get_model(model_name)
 
     with Database(db_path) as db:
         image_paths = sorted({path for root in roots for path in iter_image_files(root)})
@@ -50,8 +56,8 @@ def index_paths(roots: list[Path], db_path: Path, thumbs_dir: Path) -> IndexSumm
                         and existing.mtime_ns == stat.st_mtime_ns
                     ):
                         image_id = db.get_image_id(path)
-                        if image_id is not None and not db.has_vector(image_id):
-                            db.upsert_vector(image_id, path_to_vector(path))
+                        if image_id is not None and not db.has_vector(image_id, model.name):
+                            db.upsert_vector(image_id, model.embed_path(path), model.name)
                             summary.indexed += 1
                             progress.advance(task)
                             continue
@@ -76,7 +82,7 @@ def index_paths(roots: list[Path], db_path: Path, thumbs_dir: Path) -> IndexSumm
                         thumb_path=str(thumb),
                     )
                     image_id = db.upsert_image(record)
-                    db.upsert_vector(image_id, path_to_vector(path))
+                    db.upsert_vector(image_id, model.embed_path(path), model.name)
                     summary.indexed += 1
                 except (OSError, ImageDecodeError, VectorError) as exc:
                     try:

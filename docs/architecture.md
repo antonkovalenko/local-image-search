@@ -116,12 +116,16 @@ M3 adds a minimal browser UI:
 M4 adds the first end-to-end crop search:
 
 - Index a small deterministic `rgb-tile-16-v1` vector for each image.
+- Store vectors as compact `float32` blobs.
+- Search with a NumPy in-memory matrix index.
 - Upload a query image in the browser.
 - Draw a crop rectangle on the query image.
 - Search active indexed vectors by cosine similarity.
 - Return matches grouped by folder.
 
 This is intentionally a baseline vector model. It proves the product flow without requiring large model downloads.
+
+The embedding model is pluggable. The current default is `rgb-tile-16-v1`; later models should implement the same image/crop embedding interface.
 
 M5 should replace or supplement the baseline vector with ML embeddings:
 

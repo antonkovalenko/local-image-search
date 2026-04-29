@@ -9,7 +9,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from local_image_search.db import Database
-from local_image_search.vector import VectorError, upload_to_crop_vector
+from local_image_search.search_index import VectorIndex
+from local_image_search.vector import DEFAULT_MODEL_NAME, VectorError, get_model
 
 
 def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
@@ -18,9 +19,19 @@ def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
     web_root = resources.files("local_image_search").joinpath("web")
     static_root = web_root.joinpath("static")
     app.mount("/static", StaticFiles(directory=str(static_root)), name="static")
+    vector_indexes: dict[str, VectorIndex] = {}
 
     def open_db() -> Database:
         return Database(db_path)
+
+    def load_vector_index(model: str) -> VectorIndex:
+        try:
+            return vector_indexes[model]
+        except KeyError:
+            with open_db() as database:
+                index = database.vector_index(model)
+            vector_indexes[model] = index
+            return index
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -31,9 +42,9 @@ def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
         return web_root.joinpath("index.html").read_text(encoding="utf-8")
 
     @app.get("/api/stats")
-    def stats() -> dict[str, int]:
+    def stats(model: str = DEFAULT_MODEL_NAME) -> dict[str, int]:
         with open_db() as database:
-            return database.stats()
+            return database.stats(model=model)
 
     @app.get("/api/verify")
     def verify() -> dict[str, int]:
@@ -88,6 +99,7 @@ def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
         width: float = Form(...),
         height: float = Form(...),
         limit: int = Form(50),
+        model: str = Form(DEFAULT_MODEL_NAME),
     ) -> dict[str, object]:
         if width <= 0 or height <= 0:
             raise HTTPException(status_code=400, detail="Crop width and height must be positive")
@@ -96,18 +108,25 @@ def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
 
         content = await file.read()
         try:
-            query_vector = upload_to_crop_vector(content, x=x, y=y, width=width, height=height)
+            embedding_model = get_model(model)
+            query_vector = embedding_model.embed_upload_crop(content, x=x, y=y, width=width, height=height)
         except VectorError as exc:
             raise HTTPException(status_code=400, detail=f"Could not read query image: {exc}") from exc
 
-        with open_db() as database:
-            groups = database.grouped_search_by_vector(query_vector, limit=limit)
+        index = load_vector_index(embedding_model.name)
+        groups = index.grouped_search(query_vector, limit=limit)
 
         return {
-            "model": "rgb-tile-16-v1",
+            "model": embedding_model.name,
             "groups": groups,
             "limit": limit,
         }
+
+    @app.post("/api/reload-index")
+    def reload_index(model: str = DEFAULT_MODEL_NAME) -> dict[str, object]:
+        vector_indexes.pop(model, None)
+        index = load_vector_index(model)
+        return {"model": model, "vectors": len(index.items)}
 
     return app
 

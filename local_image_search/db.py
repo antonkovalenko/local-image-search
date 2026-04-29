@@ -6,7 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from local_image_search.vector import VECTOR_MODEL, cosine_similarity, decode_vector, encode_vector
+import numpy as np
+
+from local_image_search.search_index import VectorIndex, build_vector_index
+from local_image_search.vector import DEFAULT_MODEL_NAME, decode_vector, encode_vector, get_model
 
 
 SCHEMA = """
@@ -36,7 +39,7 @@ create table if not exists image_vectors (
   image_id integer not null,
   model text not null,
   dim integer not null,
-  vector text not null,
+  vector blob not null,
   indexed_at text not null,
   primary key (image_id, model),
   foreign key (image_id) references images(id) on delete cascade
@@ -158,14 +161,18 @@ class Database:
             return None
         return int(row["id"])
 
-    def has_vector(self, image_id: int, model: str = VECTOR_MODEL) -> bool:
+    def has_vector(self, image_id: int, model: str = DEFAULT_MODEL_NAME) -> bool:
         row = self.conn.execute(
-            "select 1 from image_vectors where image_id = ? and model = ?",
+            """
+            select 1
+            from image_vectors
+            where image_id = ? and model = ? and typeof(vector) = 'blob'
+            """,
             (image_id, model),
         ).fetchone()
         return row is not None
 
-    def upsert_vector(self, image_id: int, vector: list[float], model: str = VECTOR_MODEL) -> None:
+    def upsert_vector(self, image_id: int, vector: np.ndarray, model: str = DEFAULT_MODEL_NAME) -> None:
         self.conn.execute(
             """
             insert into image_vectors (image_id, model, dim, vector, indexed_at)
@@ -175,7 +182,7 @@ class Database:
               vector = excluded.vector,
               indexed_at = excluded.indexed_at
             """,
-            (image_id, model, len(vector), encode_vector(vector), utc_now()),
+            (image_id, model, int(vector.shape[0]), sqlite3.Binary(encode_vector(vector)), utc_now()),
         )
 
     def touch_seen(self, path: Path) -> None:
@@ -229,7 +236,7 @@ class Database:
         )
         return len(missing)
 
-    def stats(self) -> dict[str, int]:
+    def stats(self, model: str = DEFAULT_MODEL_NAME) -> dict[str, int]:
         rows = self.conn.execute(
             "select status, count(*) as count from images group by status"
         ).fetchall()
@@ -245,7 +252,7 @@ class Database:
             join images on images.id = image_vectors.image_id
             where images.status = 'active' and image_vectors.model = ?
             """,
-            (VECTOR_MODEL,),
+            (model,),
         ).fetchone()[0]
         return result
 
@@ -335,12 +342,8 @@ class Database:
             return None
         return dict(row)
 
-    def search_by_vector(
-        self,
-        query_vector: list[float],
-        limit: int = 50,
-        model: str = VECTOR_MODEL,
-    ) -> list[dict[str, Any]]:
+    def vector_index_rows(self, model: str = DEFAULT_MODEL_NAME) -> list[dict[str, Any]]:
+        embedding_model = get_model(model)
         rows = self.conn.execute(
             """
             select
@@ -353,6 +356,7 @@ class Database:
               images.width,
               images.height,
               images.thumb_path,
+              image_vectors.dim,
               image_vectors.vector
             from image_vectors
             join images on images.id = image_vectors.image_id
@@ -361,40 +365,17 @@ class Database:
             (model,),
         ).fetchall()
 
-        scored = []
+        items = []
         for row in rows:
             item = dict(row)
-            vector = decode_vector(item.pop("vector"))
-            item["score"] = cosine_similarity(query_vector, vector)
-            scored.append(item)
+            dim = int(item.pop("dim"))
+            item["_vector"] = decode_vector(item.pop("vector"), dim)
+            if item["_vector"].shape[0] == embedding_model.dim:
+                items.append(item)
+        return items
 
-        scored.sort(key=lambda item: item["score"], reverse=True)
-        return scored[:limit]
-
-    def grouped_search_by_vector(
-        self,
-        query_vector: list[float],
-        limit: int = 50,
-        per_folder: int = 12,
-    ) -> list[dict[str, Any]]:
-        matches = self.search_by_vector(query_vector, limit=limit)
-        folders: dict[str, dict[str, Any]] = {}
-        for match in matches:
-            folder = match["folder"]
-            group = folders.setdefault(
-                folder,
-                {
-                    "folder": folder,
-                    "score": match["score"],
-                    "representative": match,
-                    "images": [],
-                },
-            )
-            group["score"] = max(group["score"], match["score"])
-            if len(group["images"]) < per_folder:
-                group["images"].append(match)
-
-        return sorted(folders.values(), key=lambda item: item["score"], reverse=True)
+    def vector_index(self, model: str = DEFAULT_MODEL_NAME) -> VectorIndex:
+        return build_vector_index(model, self.vector_index_rows(model))
 
     def verify(self) -> dict[str, int]:
         rows = self.conn.execute(

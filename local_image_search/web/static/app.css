@@ -131,12 +131,21 @@ button:hover {
   border-bottom: 1px solid var(--line);
 }
 
-#query-file {
+#query-file,
+#model-select {
   display: block;
   width: 100%;
   margin-bottom: 10px;
   font: inherit;
   font-size: 13px;
+}
+
+#model-select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
 }
 
 #query-canvas {

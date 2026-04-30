@@ -14,6 +14,13 @@ pip install -r requirements.txt
 pip install -e . --no-build-isolation
 ```
 
+Install the optional OpenCLIP model backend:
+
+```bash
+pip install -r requirements-openclip.txt
+pip install -e . --no-build-isolation
+```
+
 ## Run
 
 Index a folder:
@@ -26,6 +33,13 @@ Choose an embedding model explicitly:
 
 ```bash
 local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs --model rgb-tile-16-v1
+```
+
+Use the OpenCLIP model after installing optional dependencies:
+
+```bash
+local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs --model openclip-vit-b-32
+local-image-search stats --db ./data/index.sqlite --model openclip-vit-b-32
 ```
 
 Show database stats:
@@ -100,6 +114,12 @@ If the server was already running while you reindexed, either restart it or relo
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/reload-index
+```
+
+Reload a specific model index:
+
+```bash
+curl -X POST 'http://127.0.0.1:8000/api/reload-index?model=openclip-vit-b-32'
 ```
 
 ## Notes

@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from local_image_search.db import Database
 from local_image_search.search_index import VectorIndex
-from local_image_search.vector import DEFAULT_MODEL_NAME, VectorError, get_model
+from local_image_search.vector import DEFAULT_MODEL_NAME, VectorError, available_models, get_model
 
 
 def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
@@ -50,6 +50,10 @@ def create_app(db_path: str | Path = "./data/index.sqlite") -> FastAPI:
     def verify() -> dict[str, int]:
         with open_db() as database:
             return database.verify()
+
+    @app.get("/api/models")
+    def models() -> dict[str, object]:
+        return {"default": DEFAULT_MODEL_NAME, "items": available_models()}
 
     @app.get("/api/folders")
     def folders(

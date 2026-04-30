@@ -11,6 +11,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 DEFAULT_MODEL_NAME = "rgb-tile-16-v1"
+OPENCLIP_MODEL_NAME = "openclip-vit-b-32"
 VECTOR_SIZE = (16, 16)
 
 
@@ -58,8 +59,49 @@ class RgbTileEmbeddingModel(EmbeddingModel):
         return normalize(vector)
 
 
+class OpenClipVitB32EmbeddingModel(EmbeddingModel):
+    name = OPENCLIP_MODEL_NAME
+    dim = 512
+
+    def __init__(self) -> None:
+        self._loaded = None
+
+    def embed_image(self, image: Image.Image) -> np.ndarray:
+        model, preprocess, torch, device = self._load()
+        image = ImageOps.exif_transpose(image).convert("RGB")
+        tensor = preprocess(image).unsqueeze(0).to(device)
+        with torch.no_grad():
+            features = model.encode_image(tensor)
+            features = features / features.norm(dim=-1, keepdim=True)
+        return features.squeeze(0).detach().cpu().numpy().astype(np.float32)
+
+    def _load(self):
+        if self._loaded is not None:
+            return self._loaded
+
+        try:
+            import open_clip
+            import torch
+        except ImportError as exc:
+            raise VectorError(
+                "OpenCLIP dependencies are not installed. Run: "
+                "pip install -r requirements-openclip.txt"
+            ) from exc
+
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        model, _, preprocess = open_clip.create_model_and_transforms(
+            "ViT-B-32",
+            pretrained="laion2b_s34b_b79k",
+            device=device,
+        )
+        model.eval()
+        self._loaded = (model, preprocess, torch, device)
+        return self._loaded
+
+
 MODELS: dict[str, EmbeddingModel] = {
     DEFAULT_MODEL_NAME: RgbTileEmbeddingModel(),
+    OPENCLIP_MODEL_NAME: OpenClipVitB32EmbeddingModel(),
 }
 
 

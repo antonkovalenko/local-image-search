@@ -25,6 +25,7 @@ const els = {
   queryCanvas: document.querySelector("#query-canvas"),
   searchButton: document.querySelector("#search-button"),
   searchStatus: document.querySelector("#search-status"),
+  modelSelect: document.querySelector("#model-select"),
 };
 
 const queryCtx = els.queryCanvas.getContext("2d");
@@ -149,11 +150,13 @@ async function load() {
   els.folders.innerHTML = '<div class="empty">Loading folders...</div>';
   els.images.innerHTML = '<div class="empty">Loading images...</div>';
 
-  const [stats, folders] = await Promise.all([
+  const [stats, folders, models] = await Promise.all([
     getJson("/api/stats"),
     getJson("/api/folders?limit=500"),
+    getJson("/api/models"),
   ]);
   renderStats(stats);
+  renderModels(models);
   state.folders = folders.items;
   state.selectedFolder = state.folders[0]?.folder || null;
   renderFolders();
@@ -163,6 +166,17 @@ async function load() {
   } else {
     state.images = [];
     renderImages();
+  }
+}
+
+function renderModels(models) {
+  els.modelSelect.innerHTML = "";
+  for (const model of models.items) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    option.selected = model === models.default;
+    els.modelSelect.appendChild(option);
   }
 }
 
@@ -227,6 +241,7 @@ async function runSearch() {
   form.append("width", crop.width);
   form.append("height", crop.height);
   form.append("limit", "80");
+  form.append("model", els.modelSelect.value);
 
   try {
     const response = await fetch("/api/search", { method: "POST", body: form });

@@ -133,4 +133,6 @@ M5 should replace or supplement the baseline vector with ML embeddings:
 - Face detection and face embeddings for person search.
 - Vector index via `sqlite-vec`, `hnswlib`, `FAISS`, or LanceDB.
 
+The first optional ML model is `openclip-vit-b-32`, backed by OpenCLIP ViT-B/32 with LAION weights. It is kept in `requirements-openclip.txt` so the base app stays lightweight.
+
 ClickHouse should be considered later only if the archive is very large or SQL-heavy metadata analysis becomes important.

@@ -1,11 +1,11 @@
-# Deploy
+# Setup And Deploy
 
-These steps install the local indexer from a fresh clone on a desktop Linux or macOS machine.
+These steps install and run Local Image Search from a fresh clone on Linux or macOS.
 
-## Setup
+## Fresh Setup
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/antonkovalenko/local-image-search
 cd local-image-search
 python3 -m venv .venv
 source .venv/bin/activate
@@ -14,69 +14,94 @@ pip install -r requirements.txt
 pip install -e . --no-build-isolation
 ```
 
-Install the optional OpenCLIP model backend:
+This installs the base app with the lightweight built-in model:
+
+```text
+rgb-tile-16-v1
+```
+
+## Optional OpenCLIP Setup
+
+Install this only if you want better visual search quality:
 
 ```bash
+source .venv/bin/activate
 pip install -r requirements-openclip.txt
 pip install -e . --no-build-isolation
 ```
 
-## Run
+This enables:
 
-Index a folder:
-
-```bash
-local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs
+```text
+openclip-vit-b-32
 ```
 
-Choose an embedding model explicitly:
+The first OpenCLIP indexing run downloads model weights from Hugging Face and caches them locally.
+
+## Index Photos
+
+Fast baseline model:
 
 ```bash
-local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs --model rgb-tile-16-v1
+local-image-search index /path/to/photos \
+  --db ./data/index.sqlite \
+  --thumbs ./data/thumbs \
+  --model rgb-tile-16-v1
 ```
 
-Use the OpenCLIP model after installing optional dependencies:
+Better OpenCLIP model:
 
 ```bash
-local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs --model openclip-vit-b-32
+local-image-search index /path/to/photos \
+  --db ./data/index.sqlite \
+  --thumbs ./data/thumbs \
+  --model openclip-vit-b-32
+```
+
+You can keep vectors for both models in the same SQLite database.
+
+## Check The Index
+
+```bash
+local-image-search stats --db ./data/index.sqlite --model rgb-tile-16-v1
 local-image-search stats --db ./data/index.sqlite --model openclip-vit-b-32
-```
-
-Show database stats:
-
-```bash
-local-image-search stats --db ./data/index.sqlite
-```
-
-Verify indexed files and thumbnails:
-
-```bash
 local-image-search verify --db ./data/index.sqlite
 ```
 
-Run the local API:
+`stats` reports the active image count, folder count, and vector count for the selected model.
+
+## Run The App
 
 ```bash
 local-image-search serve --db ./data/index.sqlite --host 127.0.0.1 --port 8000
 ```
 
-Open the browser UI:
+Open:
 
 ```text
 http://127.0.0.1:8000/
 ```
 
-Check it:
+The browser search panel has a model selector. Choose a model that has already been indexed.
+
+## API Checks
 
 ```bash
 curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/api/stats
+curl http://127.0.0.1:8000/api/models
+curl 'http://127.0.0.1:8000/api/stats?model=openclip-vit-b-32'
 curl http://127.0.0.1:8000/api/folders
 ```
 
-## Upgrade An Existing Clone
+If you indexed while the server was already running, reload the in-memory NumPy vector index:
 
-Pull the latest code and refresh the virtual environment:
+```bash
+curl -X POST 'http://127.0.0.1:8000/api/reload-index?model=openclip-vit-b-32'
+```
+
+Or restart the server.
+
+## Upgrade Existing Clone
 
 ```bash
 cd local-image-search
@@ -86,45 +111,37 @@ pip install -r requirements.txt
 pip install -e . --no-build-isolation
 ```
 
-Re-run indexing after upgrading to the NumPy vector index:
+If you use OpenCLIP:
 
 ```bash
-local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs --model rgb-tile-16-v1
+pip install -r requirements-openclip.txt
+pip install -e . --no-build-isolation
 ```
 
-This rewrites old JSON vectors into compact `float32` blobs. A second run should skip unchanged files:
+After upgrading from older versions, re-run indexing. This backfills missing vectors and rewrites old JSON vectors into compact `float32` blobs:
 
 ```bash
-local-image-search index /path/to/photos --db ./data/index.sqlite --thumbs ./data/thumbs --model rgb-tile-16-v1
+local-image-search index /path/to/photos \
+  --db ./data/index.sqlite \
+  --thumbs ./data/thumbs \
+  --model rgb-tile-16-v1
 ```
 
-Confirm the vector count:
+For OpenCLIP:
 
 ```bash
-local-image-search stats --db ./data/index.sqlite --model rgb-tile-16-v1
+local-image-search index /path/to/photos \
+  --db ./data/index.sqlite \
+  --thumbs ./data/thumbs \
+  --model openclip-vit-b-32
 ```
 
-Start the UI:
+A second indexing run should skip unchanged files.
 
-```bash
-local-image-search serve --db ./data/index.sqlite --host 127.0.0.1 --port 8000
-```
+## Troubleshooting
 
-If the server was already running while you reindexed, either restart it or reload its in-memory vector index:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/reload-index
-```
-
-Reload a specific model index:
-
-```bash
-curl -X POST 'http://127.0.0.1:8000/api/reload-index?model=openclip-vit-b-32'
-```
-
-## Notes
-
-- The `data/` directory is for local runtime output and should not be committed.
-- Re-running `index` skips unchanged files.
-- Re-running `index` also backfills or rewrites visual vectors for older indexes.
-- Deleted files are marked as `missing` instead of being removed from the database.
+- If `openclip-vit-b-32` is unavailable, install `requirements-openclip.txt`.
+- If OpenCLIP indexing fails on the first run, check network access to Hugging Face for model-weight download.
+- If search results are empty for a model, run `stats --model <model>` and confirm `Vectors` is nonzero.
+- If results look stale after reindexing, restart the server or call `/api/reload-index?model=<model>`.
+- The `data/` directory is local runtime output and should not be committed.

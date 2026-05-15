@@ -46,7 +46,8 @@ Fast baseline model:
 local-image-search index /path/to/photos \
   --db ./data/index.sqlite \
   --thumbs ./data/thumbs \
-  --model rgb-tile-16-v1
+  --model rgb-tile-16-v1 \
+  --log ./data/index.log
 ```
 
 Better OpenCLIP model:
@@ -55,7 +56,8 @@ Better OpenCLIP model:
 local-image-search index /path/to/photos \
   --db ./data/index.sqlite \
   --thumbs ./data/thumbs \
-  --model openclip-vit-b-32
+  --model openclip-vit-b-32 \
+  --log ./data/openclip-index.log
 ```
 
 You can keep vectors for both models in the same SQLite database.
@@ -124,7 +126,8 @@ After upgrading from older versions, re-run indexing. This backfills missing vec
 local-image-search index /path/to/photos \
   --db ./data/index.sqlite \
   --thumbs ./data/thumbs \
-  --model rgb-tile-16-v1
+  --model rgb-tile-16-v1 \
+  --log ./data/index.log
 ```
 
 For OpenCLIP:
@@ -133,7 +136,8 @@ For OpenCLIP:
 local-image-search index /path/to/photos \
   --db ./data/index.sqlite \
   --thumbs ./data/thumbs \
-  --model openclip-vit-b-32
+  --model openclip-vit-b-32 \
+  --log ./data/openclip-index.log
 ```
 
 A second indexing run should skip unchanged files.
@@ -142,6 +146,7 @@ A second indexing run should skip unchanged files.
 
 - If `openclip-vit-b-32` is unavailable, install `requirements-openclip.txt`.
 - If OpenCLIP indexing fails on the first run, check network access to Hugging Face for model-weight download.
+- Every indexing run writes a log file. Use `--log ./data/openclip-index.log` for long OpenCLIP runs.
 - If search results are empty for a model, run `stats --model <model>` and confirm `Vectors` is nonzero.
 - If results look stale after reindexing, restart the server or call `/api/reload-index?model=<model>`.
 - The `data/` directory is local runtime output and should not be committed.

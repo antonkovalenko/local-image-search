@@ -37,6 +37,10 @@ def index(
         str,
         typer.Option("--model", help="Embedding model to use for visual vectors."),
     ] = DEFAULT_MODEL_NAME,
+    log: Annotated[
+        Path,
+        typer.Option("--log", help="Path to the indexing log file."),
+    ] = Path("./data/index.log"),
 ) -> None:
     """Index image metadata and thumbnails."""
     if not paths:
@@ -49,7 +53,7 @@ def index(
     if model not in available_models():
         raise typer.BadParameter(f"Unknown model '{model}'. Available models: {', '.join(available_models())}")
 
-    summary = index_paths(paths, db, thumbs, model_name=model)
+    summary = index_paths(paths, db, thumbs, model_name=model, log_path=log)
     table = Table(title="Index Summary")
     table.add_column("Metric")
     table.add_column("Count", justify="right")
@@ -58,6 +62,8 @@ def index(
     table.add_row("Skipped", str(summary.skipped))
     table.add_row("Errors", str(summary.errors))
     table.add_row("Marked missing", str(summary.missing_marked))
+    if summary.log_path:
+        table.add_row("Log file", summary.log_path)
     console.print(table)
 
 

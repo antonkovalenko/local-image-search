@@ -89,11 +89,14 @@ class OpenClipVitB32EmbeddingModel(EmbeddingModel):
             ) from exc
 
         device = "mps" if torch.backends.mps.is_available() else "cpu"
-        model, _, preprocess = open_clip.create_model_and_transforms(
-            "ViT-B-32",
-            pretrained="laion2b_s34b_b79k",
-            device=device,
-        )
+        try:
+            model, _, preprocess = open_clip.create_model_and_transforms(
+                "ViT-B-32",
+                pretrained="laion2b_s34b_b79k",
+                device=device,
+            )
+        except Exception as exc:
+            raise VectorError(f"Could not load OpenCLIP model weights: {exc}") from exc
         model.eval()
         self._loaded = (model, preprocess, torch, device)
         return self._loaded

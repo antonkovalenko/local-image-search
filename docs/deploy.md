@@ -47,6 +47,8 @@ local-image-search index /path/to/photos \
   --db ./data/index.sqlite \
   --thumbs ./data/thumbs \
   --model rgb-tile-16-v1 \
+  --batch-size 16 \
+  --device auto \
   --log ./data/index.log
 ```
 
@@ -57,6 +59,8 @@ local-image-search index /path/to/photos \
   --db ./data/index.sqlite \
   --thumbs ./data/thumbs \
   --model openclip-vit-b-32 \
+  --batch-size 16 \
+  --device auto \
   --log ./data/openclip-index.log
 ```
 
@@ -127,6 +131,8 @@ local-image-search index /path/to/photos \
   --db ./data/index.sqlite \
   --thumbs ./data/thumbs \
   --model rgb-tile-16-v1 \
+  --batch-size 16 \
+  --device auto \
   --log ./data/index.log
 ```
 
@@ -137,6 +143,8 @@ local-image-search index /path/to/photos \
   --db ./data/index.sqlite \
   --thumbs ./data/thumbs \
   --model openclip-vit-b-32 \
+  --batch-size 16 \
+  --device auto \
   --log ./data/openclip-index.log
 ```
 
@@ -147,6 +155,7 @@ A second indexing run should skip unchanged files.
 - If `openclip-vit-b-32` is unavailable, install `requirements-openclip.txt`.
 - If OpenCLIP indexing fails on the first run, check network access to Hugging Face for model-weight download.
 - Every indexing run writes a log file. Use `--log ./data/openclip-index.log` for long OpenCLIP runs.
+- OpenCLIP indexing supports `--batch-size` and `--device auto|cpu|mps`. Larger batches are faster but use more memory.
 - If search results are empty for a model, run `stats --model <model>` and confirm `Vectors` is nonzero.
 - If results look stale after reindexing, restart the server or call `/api/reload-index?model=<model>`.
 - The `data/` directory is local runtime output and should not be committed.

@@ -4,7 +4,7 @@ import json
 from abc import ABC, abstractmethod
 from io import BytesIO
 from pathlib import Path
-from typing import Union
+from typing import Iterable, Union
 
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -23,6 +23,10 @@ class EmbeddingModel(ABC):
     name: str
     dim: int
 
+    def configure(self, device: str = "auto") -> None:
+        if device not in {"auto", "cpu", "mps"}:
+            raise VectorError(f"Unknown device '{device}'. Available devices: auto, cpu, mps")
+
     @abstractmethod
     def embed_image(self, image: Image.Image) -> np.ndarray:
         raise NotImplementedError
@@ -33,6 +37,9 @@ class EmbeddingModel(ABC):
                 return self.embed_image(image)
         except (OSError, UnidentifiedImageError) as exc:
             raise VectorError(str(exc)) from exc
+
+    def embed_paths(self, paths: Iterable[Path]) -> list[np.ndarray]:
+        return [self.embed_path(path) for path in paths]
 
     def embed_upload_crop(self, content: bytes, x: float, y: float, width: float, height: float) -> np.ndarray:
         try:
@@ -65,6 +72,13 @@ class OpenClipVitB32EmbeddingModel(EmbeddingModel):
 
     def __init__(self) -> None:
         self._loaded = None
+        self._device = "auto"
+
+    def configure(self, device: str = "auto") -> None:
+        super().configure(device)
+        if device != self._device:
+            self._device = device
+            self._loaded = None
 
     def embed_image(self, image: Image.Image) -> np.ndarray:
         model, preprocess, torch, device = self._load()
@@ -74,6 +88,30 @@ class OpenClipVitB32EmbeddingModel(EmbeddingModel):
             features = model.encode_image(tensor)
             features = features / features.norm(dim=-1, keepdim=True)
         return features.squeeze(0).detach().cpu().numpy().astype(np.float32)
+
+    def embed_paths(self, paths: Iterable[Path]) -> list[np.ndarray]:
+        model, preprocess, torch, device = self._load()
+        tensors = []
+        for path in paths:
+            try:
+                with Image.open(path) as image:
+                    image = ImageOps.exif_transpose(image).convert("RGB")
+                    tensors.append(preprocess(image))
+            except (OSError, UnidentifiedImageError) as exc:
+                raise VectorError(f"{path}: {exc}") from exc
+
+        if not tensors:
+            return []
+
+        batch = torch.stack(tensors).to(device)
+        try:
+            with torch.no_grad():
+                features = model.encode_image(batch)
+                features = features / features.norm(dim=-1, keepdim=True)
+        except Exception as exc:
+            raise VectorError(f"OpenCLIP batch embedding failed: {exc}") from exc
+
+        return [vector.astype(np.float32) for vector in features.detach().cpu().numpy()]
 
     def _load(self):
         if self._loaded is not None:
@@ -88,7 +126,7 @@ class OpenClipVitB32EmbeddingModel(EmbeddingModel):
                 "pip install -r requirements-openclip.txt"
             ) from exc
 
-        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        device = self._resolve_device(torch)
         try:
             model, _, preprocess = open_clip.create_model_and_transforms(
                 "ViT-B-32",
@@ -100,6 +138,13 @@ class OpenClipVitB32EmbeddingModel(EmbeddingModel):
         model.eval()
         self._loaded = (model, preprocess, torch, device)
         return self._loaded
+
+    def _resolve_device(self, torch) -> str:
+        if self._device == "auto":
+            return "mps" if torch.backends.mps.is_available() else "cpu"
+        if self._device == "mps" and not torch.backends.mps.is_available():
+            raise VectorError("Device 'mps' was requested, but MPS is not available")
+        return self._device
 
 
 MODELS: dict[str, EmbeddingModel] = {

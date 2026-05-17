@@ -41,6 +41,14 @@ def index(
         Path,
         typer.Option("--log", help="Path to the indexing log file."),
     ] = Path("./data/index.log"),
+    batch_size: Annotated[
+        int,
+        typer.Option("--batch-size", help="Embedding batch size for models that support batching."),
+    ] = 16,
+    device: Annotated[
+        str,
+        typer.Option("--device", help="Embedding device: auto, cpu, or mps."),
+    ] = "auto",
 ) -> None:
     """Index image metadata and thumbnails."""
     if not paths:
@@ -52,8 +60,12 @@ def index(
 
     if model not in available_models():
         raise typer.BadParameter(f"Unknown model '{model}'. Available models: {', '.join(available_models())}")
+    if batch_size < 1:
+        raise typer.BadParameter("Batch size must be at least 1.")
+    if device not in {"auto", "cpu", "mps"}:
+        raise typer.BadParameter("Device must be one of: auto, cpu, mps.")
 
-    summary = index_paths(paths, db, thumbs, model_name=model, log_path=log)
+    summary = index_paths(paths, db, thumbs, model_name=model, log_path=log, batch_size=batch_size, device=device)
     table = Table(title="Index Summary")
     table.add_column("Metric")
     table.add_column("Count", justify="right")
